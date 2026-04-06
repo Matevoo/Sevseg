@@ -8,7 +8,6 @@
 #define DIGIT2      (1<<PB1)
 #define DIGIT3      (1<<PB2)
 #define DIGIT4      (1<<PB3)
-#define SEG_DP      (1<<PD7)
 #define BLANK       0x00
 
 // ── ADC ────────────────────────────────────────────────────
@@ -28,34 +27,10 @@ static const uint8_t seg[] = {
     0x6F, // 9
 };
 
-// ── Kalibračná tabuľka ─────────────────────────────────────
-#define NUM_POINTS 5
-// Zoradené pekne od najmenšieho po najväčšie (Rádio Vlna som vyhodil kvôli zlému číslu)
-uint16_t cal_adc[NUM_POINTS]  = { 0,   414, 528, 871,  1023 }; 
-uint16_t cal_freq[NUM_POINTS] = { 870, 943, 966, 1048, 1080 }; // 943 = 94.3 MHz
-
-uint16_t get_calibrated_freq(uint16_t adc_val) {
-    // Ak sme mimo rozsahu kalibračných bodov
-    if (adc_val <= cal_adc[0]) return cal_freq[0];
-    if (adc_val >= cal_adc[NUM_POINTS - 1]) return cal_freq[NUM_POINTS - 1];
-
-    // Prehľadanie intervalov a lineárna interpolácia (smerom nahor)
-    for (uint8_t i = 0; i < NUM_POINTS - 1; i++) {
-        if (adc_val >= cal_adc[i] && adc_val <= cal_adc[i+1]) {
-            uint32_t adc_diff = adc_val - cal_adc[i];
-            uint32_t adc_range = cal_adc[i+1] - cal_adc[i];
-            uint32_t freq_range = cal_freq[i+1] - cal_freq[i];
-            
-            return cal_freq[i] + (uint16_t)((adc_diff * freq_range) / adc_range);
-        }
-    }
-    return cal_freq[0];
-}
-
 static inline void show(uint8_t digit, uint8_t segments) {
     PORTB |= ALL_DIGITS;        // all digits off
     _delay_us(10);
-    PORTD = segments;           // Set segments including DP if present
+    PORTD = segments;           // Set segments (bez DP)
     PORTB &= ~digit;            // enable selected digit
     _delay_ms(2);
 }
@@ -86,16 +61,19 @@ int main(void) {
             continue;
         }
 
-        // Získanie reálnej frekvencie pomocou našej kalibračnej tabuľky
-        uint16_t val = get_calibrated_freq(adc);
+        // --- DEBUG ZOBRAZENIE SUROVEJ HODNOTY ADC ---
+        uint16_t val = adc; 
 
-        // Rozdelenie na číslice a formátovanie
-        uint16_t hundreds = val / 1000;
-        uint16_t tens_units = val % 1000;
-        
-        show(DIGIT1, hundreds ? seg[hundreds] : BLANK);
-        show(DIGIT2, seg[tens_units / 100]);
-        show(DIGIT3, seg[(tens_units % 100) / 10] | SEG_DP); // Pridanie desatinnej bodky
-        show(DIGIT4, seg[val % 10]); 
+        // Rozdelenie na jednotlivé číslice
+        uint8_t tisicky = (val / 1000) % 10;
+        uint8_t stovky = (val / 100) % 10;
+        uint8_t desiatky = (val / 10) % 10;
+        uint8_t jednotky = val % 10;
+
+        // Vypisovanie na displej s ignorovaním núl na začiatku
+        show(DIGIT1, (val >= 1000) ? seg[tisicky] : BLANK);
+        show(DIGIT2, (val >= 100)  ? seg[stovky]  : BLANK);
+        show(DIGIT3, (val >= 10)   ? seg[desiatky]: BLANK); 
+        show(DIGIT4, seg[jednotky]); 
     }
 }
