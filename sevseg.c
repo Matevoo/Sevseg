@@ -2,7 +2,6 @@
 #include <util/delay.h>
 #include <stdint.h>
 
-// ── Display ────────────────────────────────────────────────
 #define ALL_DIGITS  ((1<<PB0)|(1<<PB1)|(1<<PB2)|(1<<PB3))
 #define DIGIT1      (1<<PB0)
 #define DIGIT2      (1<<PB1)
@@ -11,10 +10,8 @@
 #define SEG_DP      (1<<PD7)
 #define BLANK       0x00
 
-// ── ADC ────────────────────────────────────────────────────
-#define ADC_THRESHOLD   2       // below this = pot disconnected
+#define ADC_THRESHOLD   2
 
-// ── Segment patterns (A=bit0 ... G=bit6) ───────────────────
 static const uint8_t seg[] = {
     0x3F, // 0
     0x06, // 1
@@ -28,18 +25,14 @@ static const uint8_t seg[] = {
     0x6F, // 9
 };
 
-// ── Kalibračná tabuľka ─────────────────────────────────────
 #define NUM_POINTS 5
-// Zoradené pekne od najmenšieho po najväčšie (Rádio Vlna som vyhodil kvôli zlému číslu)
 uint16_t cal_adc[NUM_POINTS]  = { 0,   414, 528, 871,  1023 }; 
 uint16_t cal_freq[NUM_POINTS] = { 870, 943, 966, 1048, 1080 }; // 943 = 94.3 MHz
 
 uint16_t get_calibrated_freq(uint16_t adc_val) {
-    // Ak sme mimo rozsahu kalibračných bodov
     if (adc_val <= cal_adc[0]) return cal_freq[0];
     if (adc_val >= cal_adc[NUM_POINTS - 1]) return cal_freq[NUM_POINTS - 1];
 
-    // Prehľadanie intervalov a lineárna interpolácia (smerom nahor)
     for (uint8_t i = 0; i < NUM_POINTS - 1; i++) {
         if (adc_val >= cal_adc[i] && adc_val <= cal_adc[i+1]) {
             uint32_t adc_diff = adc_val - cal_adc[i];
@@ -53,32 +46,26 @@ uint16_t get_calibrated_freq(uint16_t adc_val) {
 }
 
 static inline void show(uint8_t digit, uint8_t segments) {
-    PORTB |= ALL_DIGITS;        // all digits off
+    PORTB |= ALL_DIGITS;        
     _delay_us(10);
-    PORTD = segments;           // Set segments including DP if present
-    PORTB &= ~digit;            // enable selected digit
+    PORTD = segments;           
+    PORTB &= ~digit;    
     _delay_ms(2);
 }
 
 int main(void) { 
-    // Segments as output
     DDRD   = 0xFF;
-    // Digit selects as output, all off initially
     DDRB  |= ALL_DIGITS;
     PORTB |= ALL_DIGITS;
-
-    // ADC: AVCC reference, ADC0 (PC0), prescaler /128
     ADMUX  = (1<<REFS0);
     ADCSRA = (1<<ADEN) | (1<<ADPS2) | (1<<ADPS1) | (1<<ADPS0);
 
     while (1) {
-        // Start conversion
         ADCSRA |= (1<<ADSC);
         while (ADCSRA & (1<<ADSC));
         uint16_t adc = ADC;
 
         if (adc < ADC_THRESHOLD) {
-            // Pot disconnected – blank all digits
             show(DIGIT1, BLANK);
             show(DIGIT2, BLANK);
             show(DIGIT3, BLANK);
@@ -86,16 +73,14 @@ int main(void) {
             continue;
         }
 
-        // Získanie reálnej frekvencie pomocou našej kalibračnej tabuľky
         uint16_t val = get_calibrated_freq(adc);
 
-        // Rozdelenie na číslice a formátovanie
         uint16_t hundreds = val / 1000;
         uint16_t tens_units = val % 1000;
         
         show(DIGIT1, hundreds ? seg[hundreds] : BLANK);
         show(DIGIT2, seg[tens_units / 100]);
-        show(DIGIT3, seg[(tens_units % 100) / 10] | SEG_DP); // Pridanie desatinnej bodky
+        show(DIGIT3, seg[(tens_units % 100) / 10] | SEG_DP);
         show(DIGIT4, seg[val % 10]); 
     }
 }
